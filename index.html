@@ -56,6 +56,7 @@
   #syncDot { display:inline-block; width:9px; height:9px; border-radius:999px; background:#94a3b8; margin-right:5px; }
   #syncDot.ok { background:#10b981; } #syncDot.err { background:#ef4444; }
   @media print { .btn, .panel, footer, .chip { display: none !important; } body { background: #fff; padding: 0; } }
+  body.readonly #btnAdd, body.readonly #btnNewConcert, body.readonly #addPanel, body.readonly #m-photo-btn, body.readonly #m-photo-del, body.readonly #m-del { display: none !important; }
 </style>
 </head>
 <body>
@@ -77,7 +78,7 @@
   <div class="panel" id="cfgPanel" style="display:none">
     <p style="margin:0 0 10px;font-size:13px;color:#475569">Un seul mot de passe : entrez celui de <b>lecture</b> pour consulter la liste, ou celui d'<b>écriture</b> (bureau) pour pouvoir la modifier — l'application détecte automatiquement vos droits.</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <input type="url" id="cfgUrl" placeholder="https://trombinoscope.xxx.workers.dev" style="flex:1;min-width:240px" />
+      <input type="url" id="cfgUrl" placeholder="https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev/" style="flex:1;min-width:240px" />
       <input type="password" id="cfgAuth" placeholder="Mot de passe" style="min-width:170px" autocomplete="off" />
       <button class="btn green" id="cfgSave">Connecter</button>
     </div>
@@ -132,7 +133,8 @@ var ESC = function(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(
 
 var state = {
   members: [], concerts: [],
-  search: "", nat: ALL, cat: ALL, inst: ALL, concert: null, selectedId: null
+  search: "", nat: ALL, cat: ALL, inst: ALL, concert: null, selectedId: null,
+  canWrite: null // null = inconnu, true = bureau, false = lecture seule
 };
 var server = { url: "", auth: "" };
 var pushTimer = null;
@@ -172,14 +174,15 @@ function saveLocal() {
 function push(reason) {
   if (!server.url) { setSync("", "Hors ligne — site non configuré"); return; }
   if (!server.auth) { setSync("", "🔒 Entrez le mot de passe (⚙️)"); return; }
+  if (state.canWrite === false) { saveLocal(); setSync("ok", "Lecture seule " + new Date().toLocaleTimeString("fr-FR")); return; }
   setSync("", "Envoi…");
   fetch(server.url + "/data", {
     method: "PUT",
     headers: { "Content-Type": "application/json", "X-Auth": server.auth },
     body: payload()
   }).then(function(r){
-    if (r.ok) setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR"));
-    else if (r.status === 401) setSync("ok", "Lecture seule " + new Date().toLocaleTimeString("fr-FR"));
+    if (r.ok) { state.canWrite = true; setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR")); }
+    else if (r.status === 401) { state.canWrite = false; setSync("ok", "Lecture seule " + new Date().toLocaleTimeString("fr-FR")); render(); }
     else { setSync("err", "Erreur serveur (" + r.status + ")"); }
   }).catch(function(){ setSync("err", "Serveur injoignable"); });
 }
@@ -201,6 +204,8 @@ function pull(quiet) {
     }
     setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR"));
     render();
+    // Détection des droits : premier test d'écriture silencieux
+    if (state.canWrite === null) setTimeout(function(){ push(); }, 0);
   }).catch(function(e){ setSync("err", e === "unauthorized" ? "Mot de passe incorrect" : "Serveur injoignable"); });
 }
 function memberById(id) { for (var i=0;i<state.members.length;i++) if (state.members[i].id===id) return state.members[i]; return null; }
@@ -232,6 +237,7 @@ function tag(text, cat) {
 }
 
 function render() {
+  document.body.classList.toggle("readonly", state.canWrite === false);
   var list = filtered();
   var withPhoto = state.members.filter(function(m){ return m.photo; }).length;
   document.getElementById("stats").textContent = state.members.length+" membres · "+list.length+" affiché"+(list.length>1?"s":"")+" · "+withPhoto+" avec photo";
@@ -279,25 +285,34 @@ function openModal(id) {
   var m = memberById(id); if (!m) return;
   var old = document.querySelector(".modal-bg"); if (old) old.remove();
   var concerts = allConcerts();
+  var ro = state.canWrite === false; // mode lecture seule
   var bg = document.createElement("div"); bg.className = "modal-bg";
+  var infoHtml = ro
+    ? '<div style="display:flex;flex-direction:column;gap:6px;padding:6px 0">'
+      + '<div style="font-size:19px;font-weight:700">'+ESC(m.firstName)+' <span style="text-transform:uppercase">'+ESC(m.lastName)+'</span></div>'
+      + '<div style="color:#475569">'+ESC(m.role)+'</div>'
+      + '<div style="color:#64748b">'+ESC(m.nationality)+' · '+ESC(m.category)+(m.instrument?' · '+ESC(m.instrument):'')+'</div>'
+      + (m.notes?'<div style="color:#94a3b8;font-size:13px;margin-top:4px">'+ESC(m.notes)+'</div>':'')
+      + '</div>'
+    : '<input type="text" class="name-in" id="m-first" value="'+ESC(m.firstName)+'" placeholder="Prénom" />'
+      + '<input type="text" class="name-in" id="m-last" value="'+ESC(m.lastName)+'" placeholder="Nom" style="text-transform:uppercase" />'
+      + '<input type="text" id="m-role" value="'+ESC(m.role)+'" placeholder="Rôle" />'
+      + '<input type="text" id="m-nat" value="'+ESC(m.nationality)+'" placeholder="Nationalité" />'
+      + '<div style="display:flex;gap:6px"><select id="m-cat" style="flex:1">'+CATEGORIES.map(function(c){ return '<option'+(m.category===c?" selected":"")+'>'+ESC(c)+'</option>'; }).join("")+'</select>'
+      + '<input type="text" id="m-inst" value="'+ESC(m.instrument)+'" placeholder="Instrument" style="flex:1" /></div>'
+      + '<input type="text" id="m-notes" value="'+ESC(m.notes)+'" placeholder="Notes…" />';
   bg.innerHTML = '<div class="modal"><div class="top">'+photoHtml(m)+
-    '<div class="info">'+
-    '<input type="text" class="name-in" id="m-first" value="'+ESC(m.firstName)+'" placeholder="Prénom" />'+
-    '<input type="text" class="name-in" id="m-last" value="'+ESC(m.lastName)+'" placeholder="Nom" style="text-transform:uppercase" />'+
-    '<input type="text" id="m-role" value="'+ESC(m.role)+'" placeholder="Rôle" />'+
-    '<input type="text" id="m-nat" value="'+ESC(m.nationality)+'" placeholder="Nationalité" />'+
-    '<div style="display:flex;gap:6px"><select id="m-cat" style="flex:1">'+CATEGORIES.map(function(c){ return '<option'+(m.category===c?" selected":"")+'>'+ESC(c)+'</option>'; }).join("")+'</select>'+
-    '<input type="text" id="m-inst" value="'+ESC(m.instrument)+'" placeholder="Instrument" style="flex:1" /></div>'+
-    '<input type="text" id="m-notes" value="'+ESC(m.notes)+'" placeholder="Notes…" /></div></div>'+
+    '<div class="info">'+infoHtml+'</div></div>'+
     (concerts.length?'<div style="padding:0 18px 12px"><div class="label" style="margin-bottom:6px">Participation aux concerts</div><div class="chips">'+
       concerts.map(function(c){ var on = m.concerts.indexOf(c)>=0;
-        return '<button class="chip'+(on?" on green":"")+'" data-toggle="'+ESC(c)+'">'+(on?"✓ ":"")+ESC(c)+'</button>'; }).join("")+'</div></div>':'')+
-    '<div class="foot"><div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        return '<span class="chip" style="cursor:default'+(on?";background:#059669;color:#fff;border-color:#059669":"")+'">'+(on?"✓ ":"")+ESC(c)+'</span>'; }).join("")+'</div></div>':'')+
+    (ro?'':'<div class="foot"><div style="display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn" id="m-photo-btn">📷 '+(m.photo?"Changer la photo":"Ajouter une photo")+'</button>'+
     '<button class="btn" id="m-photo-del">Retirer</button></div>'+
-    '<button class="btn red" id="m-del">Supprimer</button></div></div>';
+    '<button class="btn red" id="m-del">Supprimer</button></div>')+'</div>';
   document.body.appendChild(bg);
   bg.addEventListener("click", function(e){ if (e.target===bg) { state.selectedId=null; bg.remove(); } });
+  if (ro) return;
   function set(k,v){ update(m.id, k==="firstName"?{firstName:v}:k==="lastName"?{lastName:v}:k==="role"?{role:v}:k==="nationality"?{nationality:v}:k==="instrument"?{instrument:v}:{notes:v}); }
   [["#m-first","firstName"],["#m-last","lastName"],["#m-role","role"],["#m-nat","nationality"],["#m-inst","instrument"],["#m-notes","notes"]].forEach(function(p){
     var el = bg.querySelector(p[0]); el.addEventListener("input", function(){ set(p[1], el.value); });
@@ -391,6 +406,7 @@ document.getElementById("btnCfg").addEventListener("click", function(){
 document.getElementById("cfgSave").addEventListener("click", function(){
   server.url = document.getElementById("cfgUrl").value.trim().replace(/\/$/,"");
   server.auth = document.getElementById("cfgAuth").value;
+  state.canWrite = null; // redétecte les droits avec le nouveau mot de passe
   localStorage.setItem(KEY_URL, server.url); localStorage.setItem(KEY_AUTH, server.auth);
   document.getElementById("cfgPanel").style.display = "none";
   pull(false);
