@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trombinoscope de l'orchestre</title>
+<style>
+  :root { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #0f172a; background: #f8fafc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
+  .sub { color: #64748b; font-size: 13px; margin: 4px 0 0; }
+  .btn { border: 0; border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer; background: #e2e8f0; color: #0f172a; }
+  .btn:hover { background: #cbd5e1; }
+  .btn.dark { background: #0f172a; color: #fff; }
+  .btn.dark:hover { background: #334155; }
+  .btn.green { background: #059669; color: #fff; }
+  .btn.green:hover { background: #10b981; }
+  .btn.red { background: #fee2e2; color: #dc2626; }
+  .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  input[type=text], input[type=url], select { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 12px; font-size: 14px; background: #fff; min-width: 180px; }
+  .search { flex: 1; min-width: 220px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .chip.on { background: #0f172a; color: #fff; border-color: #0f172a; }
+  .chip.on.green { background: #059669; border-color: #059669; }
+  .chip.add { border-style: dashed; color: #64748b; }
+  .chip.reset { color: #dc2626; border: none; background: none; text-decoration: underline; }
+  .label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.04); position: relative; }
+  .card:hover { box-shadow: 0 6px 16px rgba(0,0,0,.08); }
+  .photo { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; background: #e2e8f0; }
+  .nophoto { width: 100%; aspect-ratio: 3/4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg,#f1f5f9,#e2e8f0); color: #94a3b8; font-size: 12px; font-weight: 600; }
+  .card .body { padding: 12px 14px 14px; }
+  .name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name .last { text-transform: uppercase; }
+  .inst { color: #64748b; font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid; }
+  .concerts-line { font-size: 11px; color: #047857; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  .modal { background: #fff; border-radius: 16px; max-width: 520px; width: 100%; max-height: 92vh; overflow: auto; }
+  .modal .top { display: grid; grid-template-columns: 140px 1fr; }
+  .modal .info { padding: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .modal input[type=text] { min-width: 0; width: 100%; border: none; background: none; font-size: 15px; padding: 4px; border-radius: 6px; }
+  .modal input[type=text]:focus { background: #f1f5f9; outline: none; }
+  .modal .name-in { font-size: 19px !important; font-weight: 700; }
+  .modal .foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 14px; border-top: 1px solid #f1f5f9; }
+  .empty { text-align: center; padding: 60px 0; color: #94a3b8; }
+  footer { margin-top: 28px; text-align: center; color: #94a3b8; font-size: 12px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  #syncDot { display:inline-block; width:9px; height:9px; border-radius:999px; background:#94a3b8; margin-right:5px; }
+  #syncDot.ok { background:#10b981; } #syncDot.err { background:#ef4444; }
+  @media print { .btn, .panel, footer, .chip { display: none !important; } body { background: #fff; padding: 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Trombinoscope de l'orchestre</h1>
+      <p class="sub"><span id="syncDot"></span><span id="syncText">Hors ligne</span> · <span id="stats"></span></p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <button class="btn" id="btnSync" title="Recharger la liste commune">🔄 Actualiser</button>
+      <button class="btn" id="btnCfg" title="Configurer la synchronisation">⚙️ Synchronisation</button>
+      <button class="btn" id="btnCsv">📄 CSV</button>
+      <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
+      <button class="btn dark" id="btnAdd">+ Ajouter un membre</button>
+    </div>
+  </header>
+
+  <div class="panel" id="cfgPanel" style="display:none">
+    <p style="margin:0 0 10px;font-size:13px;color:#475569">Collez l'adresse de votre serveur de synchronisation, puis les mots de passe du bureau (Cloudflare, Secrets <code>READ_TOKEN</code> et <code>AUTH_TOKEN</code>). Le mot de passe de lecture suffit pour consulter la liste ; celui d'écriture permet de modifier.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <input type="url" id="cfgUrl" placeholder="https://trombinoscope.xxx.workers.dev" style="flex:1;min-width:240px" />
+      <input type="text" id="cfgRead" placeholder="Mot de passe de lecture" style="min-width:170px" />
+      <input type="text" id="cfgWrite" placeholder="Mot de passe d'écriture" style="min-width:170px" />
+      <button class="btn green" id="cfgSave">Connecter</button>
+    </div>
+  </div>
+
+  <div class="panel" id="addPanel" style="display:none">
+    <div class="form-grid" id="addForm">
+      <input type="text" id="f-first" placeholder="Prénom" />
+      <input type="text" id="f-last" placeholder="Nom" />
+      <input type="text" id="f-role" placeholder="Rôle (premier violon, soliste…)" />
+      <input type="text" id="f-nat" placeholder="Nationalité (France, Italie…)" />
+      <select id="f-cat"></select>
+      <input type="text" id="f-inst" placeholder="Instrument (violon, hautbois…)" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <input type="text" id="f-notes" placeholder="Notes (téléphone, e-mail…)" style="flex:1" />
+      <button class="btn green" id="btnSaveNew">Ajouter</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="filters">
+      <input type="text" class="search" id="search" placeholder="Rechercher un nom, un rôle, un instrument…" />
+      <select id="natSel"></select>
+      <select id="instSel"></select>
+    </div>
+    <div class="chips" id="catChips"></div>
+    <div class="chips" id="concertChips"></div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <footer>Trombinoscope commun : chaque modification est envoyée au serveur partagé. Pensez à cliquer sur « 🔄 Actualiser » pour voir les changements des autres.</footer>
+</div>
+
+<script>
+"use strict";
+var CATEGORIES = ["Cordes","Bois","Cuivres","Percussions","Claviers","Chant","Direction","Autre"];
+var CAT_COLORS = { "Cordes":["#f5f3ff","#6d28d9","#ddd6fe"], "Bois":["#d1fae5","#047857","#a7f3d0"], "Cuivres":["#fef3c7","#b45309","#fde68a"], "Percussions":["#ffe4e6","#be123c","#fecdd3"], "Claviers":["#e0f2fe","#0369a1","#bae6fd"], "Chant":["#fce7f3","#a21caf","#f9a8d4"], "Direction":["#0f172a","#ffffff","#334155"], "Autre":["#f1f5f9","#475569","#e2e8f0"] };
+var ALL = "Tous";
+var uid = function(){ return Math.random().toString(36).slice(2,10); };
+var KEY_M = "trombi-web-members", KEY_C = "trombi-web-concerts", KEY_URL = "trombi-server-url", KEY_READ = "trombi-read-auth", KEY_WRITE = "trombi-write-auth";
+var ESC = function(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); };
+
+var state = {
+  members: [], concerts: [],
+  search: "", nat: ALL, cat: ALL, inst: ALL, concert: null, selectedId: null
+};
+var server = { url: "", readAuth: "", writeAuth: "" };
+var pushTimer = null;
+
+function loadConfig() {
+  server.url = localStorage.getItem(KEY_URL) || "";
+  server.readAuth = localStorage.getItem(KEY_READ) || "";
+  server.writeAuth = localStorage.getItem(KEY_WRITE) || "";
+  document.getElementById("cfgUrl").value = server.url;
+  document.getElementById("cfgRead").value = server.readAuth;
+  document.getElementById("cfgWrite").value = server.writeAuth;
+}
+function setSync(status, msg) {
+  var dot = document.getElementById("syncDot"), txt = document.getElementById("syncText");
+  dot.className = status; txt.textContent = msg;
+}
+function loadLocal() {
+  try {
+    var m = localStorage.getItem(KEY_M);
+    state.members = m ? normalize(JSON.parse(m)) : demo();
+    var c = localStorage.getItem(KEY_C);
+    state.concerts = c ? JSON.parse(c) : [];
+  } catch(e) { state.members = demo(); }
+}
+function normalize(list) {
+  return list.map(function(m){ return { id: m.id||uid(), firstName:m.firstName||"", lastName:m.lastName||"", role:m.role||"Musicien", nationality:m.nationality||"Non renseignée", category:m.category||"Autre", instrument:m.instrument||"", concerts:Array.isArray(m.concerts)?m.concerts:[], photo:m.photo||null, notes:m.notes||"" }; });
+}
+function demo() {
+  return [
+    { id: uid(), firstName:"Exemple", lastName:"Chef", role:"Chef·fe d'orchestre", nationality:"France", category:"Direction", instrument:"Baguette", concerts:["Concert d'automne"], photo:null, notes:"" },
+    { id: uid(), firstName:"Marie", lastName:"Dupont", role:"Premier violon", nationality:"France", category:"Cordes", instrument:"Violon", concerts:["Concert d'automne","Concert de printemps"], photo:null, notes:"" },
+    { id: uid(), firstName:"Karim", lastName:"Benali", role:"Musicien", nationality:"Algérie", category:"Bois", instrument:"Clarinette", concerts:["Concert de printemps"], photo:null, notes:"" }
+  ];
+}
+function payload() { return JSON.stringify({ members: state.members, concerts: state.concerts }); }
+function saveLocal() {
+  try { localStorage.setItem(KEY_M, JSON.stringify(state.members)); localStorage.setItem(KEY_C, JSON.stringify(state.concerts)); } catch(e){}
+}
+function push(reason) {
+  if (!server.url) { setSync("", "Hors ligne — configurez ⚙️ pour partager"); return; }
+  setSync("", "Envoi…");
+  fetch(server.url + "/data", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Auth": server.writeAuth },
+    body: payload()
+  }).then(function(r){
+    if (r.ok) setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR"));
+    else { setSync("err", "Erreur serveur (" + r.status + ")"); }
+  }).catch(function(){ setSync("err", "Serveur injoignable"); });
+}
+function save(reason) { saveLocal(); clearTimeout(pushTimer); pushTimer = setTimeout(function(){ push(reason); }, 400); }
+function pull(quiet) {
+  if (!server.url) { setSync("", "Hors ligne — configurez ⚙️ pour partager"); return; }
+  if (!quiet) setSync("", "Chargement…");
+  fetch(server.url + "/data", {
+    method: "GET",
+    headers: { "X-Auth": server.readAuth }
+  }).then(function(r){
+    if (r.status === 401) throw "unauthorized";
+    return r.ok ? r.text() : Promise.reject("http "+r.status);
+  }).then(function(t){
+    if (t && t !== "null") {
+      var d = JSON.parse(t);
+      if (d && Array.isArray(d.members)) { state.members = normalize(d.members); state.concerts = d.concerts || []; saveLocal(); }
+    }
+    setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR"));
+    render();
+  }).catch(function(e){ setSync("err", e === "unauthorized" ? "Mot de passe de lecture incorrect" : "Serveur injoignable"); });
+}
+function memberById(id) { for (var i=0;i<state.members.length;i++) if (state.members[i].id===id) return state.members[i]; return null; }
+function update(id, patch) { state.members = state.members.map(function(m){ return m.id===id ? Object.assign({}, m, patch) : m; }); save(); render(); }
+
+function allConcerts() {
+  var s = state.concerts.slice();
+  state.members.forEach(function(m){ m.concerts.forEach(function(c){ if (s.indexOf(c)<0) s.push(c); }); });
+  return s.sort(function(a,b){ return a.localeCompare(b,"fr"); });
+}
+function filtered() {
+  var q = state.search.trim().toLowerCase();
+  return state.members.filter(function(m){
+    if (state.nat!==ALL && m.nationality!==state.nat) return false;
+    if (state.cat!==ALL && m.category!==state.cat) return false;
+    if (state.inst!==ALL && m.instrument!==state.inst) return false;
+    if (state.concert && m.concerts.indexOf(state.concert)<0) return false;
+    if (q && (m.firstName+" "+m.lastName+" "+m.role+" "+m.instrument+" "+m.nationality).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  }).sort(function(a,b){ return a.lastName.localeCompare(b.lastName,"fr"); });
+}
+function photoHtml(m) {
+  if (m.photo) return '<img class="photo" src="'+m.photo+'" alt="'+ESC(m.firstName+" "+m.lastName)+'" />';
+  return '<div class="nophoto"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>Photo à importer</div>';
+}
+function tag(text, cat) {
+  var c = CAT_COLORS[cat] || CAT_COLORS["Autre"];
+  return '<span class="tag" style="background:'+c[0]+';color:'+c[1]+';border-color:'+c[2]+'">'+ESC(text)+'</span>';
+}
+
+function render() {
+  var list = filtered();
+  var withPhoto = state.members.filter(function(m){ return m.photo; }).length;
+  document.getElementById("stats").textContent = state.members.length+" membres · "+list.length+" affiché"+(list.length>1?"s":"")+" · "+withPhoto+" avec photo";
+
+  var nats = [ALL], insts = [ALL];
+  state.members.forEach(function(m){
+    if (nats.indexOf(m.nationality)<0) nats.push(m.nationality);
+    var inst = m.instrument || "";
+    if (inst && insts.indexOf(inst)<0 && (state.cat===ALL || m.category===state.cat)) insts.push(inst);
+  });
+  nats.sort(function(a,b){return a.localeCompare(b,"fr");}); insts.sort(function(a,b){return a.localeCompare(b,"fr");});
+  var natSel = document.getElementById("natSel"), instSel = document.getElementById("instSel");
+  natSel.innerHTML = nats.map(function(n){ return '<option value="'+ESC(n)+'">'+ESC(n===ALL?"🌍 Toutes nationalités":n)+'</option>'; }).join("");
+  instSel.innerHTML = insts.map(function(i){ return '<option value="'+ESC(i)+'">'+ESC(i===ALL?"🎻 Tous les instruments":i)+'</option>'; }).join("");
+  natSel.value = state.nat; instSel.value = state.inst;
+
+  var cc = document.getElementById("catChips");
+  cc.innerHTML = '<span class="label">Catégorie :</span>' + CATEGORIES.map(function(c){
+    return '<button class="chip'+(state.cat===c?" on":"")+'" data-cat="'+ESC(c)+'">'+ESC(c)+'</button>';
+  }).join("") + '<button class="chip'+(state.cat===ALL?" on":"")+'" data-cat="'+ALL+'">Toutes</button>';
+
+  var concerts = allConcerts();
+  var cq = document.getElementById("concertChips");
+  cq.innerHTML = '<span class="label">Concerts :</span><button class="chip'+(state.concert?"":" on")+'" data-concert="">Tous</button>' +
+    concerts.map(function(c){
+      var n = state.members.filter(function(m){ return m.concerts.indexOf(c)>=0; }).length;
+      return '<button class="chip'+(state.concert===c?" on green":"")+'" data-concert="'+ESC(c)+'">🎵 '+ESC(c)+' ('+n+')</button>';
+    }).join("") + '<button class="chip add" id="btnNewConcert">+ Nouveau concert</button>' +
+    (state.nat!==ALL||state.cat!==ALL||state.inst!==ALL||state.concert||state.search ? '<button class="chip reset" id="btnReset">✕ Réinitialiser les filtres</button>' : "");
+
+  var g = document.getElementById("grid");
+  g.innerHTML = list.length ? list.map(function(m){
+    return '<div class="card" data-id="'+m.id+'">'+photoHtml(m)+
+      '<div class="body"><div class="name">'+ESC(m.firstName)+' <span class="last">'+ESC(m.lastName)+'</span></div>'+
+      '<div class="inst">'+ESC(m.instrument||m.role)+'</div>'+
+      '<div class="tags">'+tag(m.category, m.category)+'<span class="tag" style="background:#f8fafc;color:#475569;border-color:#e2e8f0">'+ESC(m.nationality)+'</span></div>'+
+      (m.concerts.length?'<div class="concerts-line">🎵 '+ESC(m.concerts.join(", "))+'</div>':'')+
+      '</div><input type="file" accept="image/*" hidden data-photo="'+m.id+'" /></div>';
+  }).join("") : '<div class="empty" style="grid-column:1/-1">Aucun membre ne correspond à ces critères.</div>';
+
+  if (state.selectedId) openModal(state.selectedId);
+}
+
+function openModal(id) {
+  var m = memberById(id); if (!m) return;
+  var old = document.querySelector(".modal-bg"); if (old) old.remove();
+  var concerts = allConcerts();
+  var bg = document.createElement("div"); bg.className = "modal-bg";
+  bg.innerHTML = '<div class="modal"><div class="top">'+photoHtml(m)+
+    '<div class="info">'+
+    '<input type="text" class="name-in" id="m-first" value="'+ESC(m.firstName)+'" placeholder="Prénom" />'+
+    '<input type="text" class="name-in" id="m-last" value="'+ESC(m.lastName)+'" placeholder="Nom" style="text-transform:uppercase" />'+
+    '<input type="text" id="m-role" value="'+ESC(m.role)+'" placeholder="Rôle" />'+
+    '<input type="text" id="m-nat" value="'+ESC(m.nationality)+'" placeholder="Nationalité" />'+
+    '<div style="display:flex;gap:6px"><select id="m-cat" style="flex:1">'+CATEGORIES.map(function(c){ return '<option'+(m.category===c?" selected":"")+'>'+ESC(c)+'</option>'; }).join("")+'</select>'+
+    '<input type="text" id="m-inst" value="'+ESC(m.instrument)+'" placeholder="Instrument" style="flex:1" /></div>'+
+    '<input type="text" id="m-notes" value="'+ESC(m.notes)+'" placeholder="Notes…" /></div></div>'+
+    (concerts.length?'<div style="padding:0 18px 12px"><div class="label" style="margin-bottom:6px">Participation aux concerts</div><div class="chips">'+
+      concerts.map(function(c){ var on = m.concerts.indexOf(c)>=0;
+        return '<button class="chip'+(on?" on green":"")+'" data-toggle="'+ESC(c)+'">'+(on?"✓ ":"")+ESC(c)+'</button>'; }).join("")+'</div></div>':'')+
+    '<div class="foot"><div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn" id="m-photo-btn">📷 '+(m.photo?"Changer la photo":"Ajouter une photo")+'</button>'+
+    '<button class="btn" id="m-photo-del">Retirer</button></div>'+
+    '<button class="btn red" id="m-del">Supprimer</button></div></div>';
+  document.body.appendChild(bg);
+  bg.addEventListener("click", function(e){ if (e.target===bg) { state.selectedId=null; bg.remove(); } });
+  function set(k,v){ update(m.id, k==="firstName"?{firstName:v}:k==="lastName"?{lastName:v}:k==="role"?{role:v}:k==="nationality"?{nationality:v}:k==="instrument"?{instrument:v}:{notes:v}); }
+  [["#m-first","firstName"],["#m-last","lastName"],["#m-role","role"],["#m-nat","nationality"],["#m-inst","instrument"],["#m-notes","notes"]].forEach(function(p){
+    var el = bg.querySelector(p[0]); el.addEventListener("input", function(){ set(p[1], el.value); });
+  });
+  bg.querySelector("#m-cat").addEventListener("change", function(){ update(m.id, {category:this.value}); });
+  bg.querySelectorAll("[data-toggle]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var c = b.getAttribute("data-toggle"), has = m.concerts.indexOf(c)>=0;
+      update(m.id, { concerts: has ? m.concerts.filter(function(x){return x!==c;}) : m.concerts.concat([c]) });
+      setTimeout(function(){ openModal(m.id); }, 0);
+    });
+  });
+  var fileIn = document.createElement("input"); fileIn.type="file"; fileIn.accept="image/*"; fileIn.hidden=true; bg.appendChild(fileIn);
+  bg.querySelector("#m-photo-btn").addEventListener("click", function(){ fileIn.click(); });
+  fileIn.addEventListener("change", function(){
+    var f = fileIn.files[0]; if (!f) return;
+    if (f.size > 3*1024*1024) { alert("Photo trop lourde (max ~3 Mo) : réduisez-la avant l'envoi."); return; }
+    var r = new FileReader(); r.onload = function(){ update(m.id, {photo:r.result}); setTimeout(function(){ openModal(m.id); },0); }; r.readAsDataURL(f);
+  });
+  bg.querySelector("#m-photo-del").addEventListener("click", function(){ update(m.id, {photo:null}); setTimeout(function(){ openModal(m.id); },0); });
+  bg.querySelector("#m-del").addEventListener("click", function(){
+    if (!confirm("Supprimer "+m.firstName+" "+m.lastName+" ?")) return;
+    state.members = state.members.filter(function(x){ return x.id!==m.id; }); state.selectedId=null; save(); render();
+  });
+}
+
+function download(name, content, type) {
+  var blob = new Blob([content], {type:type});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+function escCsv(s){ return '"'+String(s).replace(/"/g,'""')+'"'; }
+
+document.getElementById("search").addEventListener("input", function(){ state.search=this.value; render(); });
+document.getElementById("natSel").addEventListener("change", function(){ state.nat=this.value; state.inst=ALL; render(); });
+document.getElementById("instSel").addEventListener("change", function(){ state.inst=this.value; render(); });
+document.body.addEventListener("click", function(e){
+  var t = e.target;
+  var catChip = t.closest && t.closest("[data-cat]");
+  if (catChip) { state.cat = catChip.getAttribute("data-cat"); render(); return; }
+  var concertChip = t.closest && t.closest("[data-concert]");
+  if (concertChip && concertChip.id!=="btnNewConcert") { var v = concertChip.getAttribute("data-concert"); state.concert = v||null; render(); return; }
+  if (t.id==="btnNewConcert") {
+    var name = prompt("Nom du nouveau concert ?");
+    if (name && name.trim() && state.concerts.indexOf(name.trim())<0) { state.concerts.push(name.trim()); save(); render(); }
+    return;
+  }
+  if (t.id==="btnReset") { state.search=""; state.nat=ALL; state.cat=ALL; state.inst=ALL; state.concert=null; document.getElementById("search").value=""; render(); return; }
+  var card = t.closest && t.closest(".card");
+  if (card) { state.selectedId = card.getAttribute("data-id"); openModal(state.selectedId); return; }
+});
+document.body.addEventListener("change", function(e){
+  var f = e.target;
+  if (f.getAttribute && f.getAttribute("data-photo")) {
+    var file = f.files[0]; if (!file) return;
+    if (file.size > 3*1024*1024) { alert("Photo trop lourde (max ~3 Mo) : réduisez-la avant l'envoi."); f.value=""; return; }
+    var id = f.getAttribute("data-photo");
+    var r = new FileReader(); r.onload = function(){ update(id, {photo:r.result}); }; r.readAsDataURL(file);
+    f.value="";
+  }
+});
+document.getElementById("btnAdd").addEventListener("click", function(){
+  var p = document.getElementById("addPanel"); p.style.display = p.style.display==="none" ? "block" : "none";
+});
+var catSel = document.getElementById("f-cat");
+catSel.innerHTML = CATEGORIES.map(function(c){ return '<option>'+ESC(c)+'</option>'; }).join("");
+document.getElementById("btnSaveNew").addEventListener("click", function(){
+  var first = document.getElementById("f-first").value.trim(), last = document.getElementById("f-last").value.trim();
+  if (!first && !last) return;
+  state.members.push({ id:uid(), firstName:first, lastName:last,
+    role:document.getElementById("f-role").value.trim()||"Musicien",
+    nationality:document.getElementById("f-nat").value.trim()||"Non renseignée",
+    category:catSel.value||"Autre",
+    instrument:document.getElementById("f-inst").value.trim(),
+    concerts:[], photo:null, notes:document.getElementById("f-notes").value });
+  ["f-first","f-last","f-role","f-nat","f-inst","f-notes"].forEach(function(i){ document.getElementById(i).value=""; });
+  save(); render();
+});
+document.getElementById("btnCsv").addEventListener("click", function(){
+  var rows = [["Prénom","Nom","Rôle","Nationalité","Catégorie","Instrument","Concerts","Photo","Notes"].join(";")];
+  filtered().forEach(function(m){
+    rows.push([escCsv(m.firstName),escCsv(m.lastName),escCsv(m.role),escCsv(m.nationality),escCsv(m.category),escCsv(m.instrument),escCsv(m.concerts.join(", ")),m.photo?"oui":"non",escCsv(m.notes)].join(";"));
+  });
+  download("trombinoscope-orchestre.csv", "\uFEFF"+rows.join("\r\n"), "text/csv");
+});
+document.getElementById("btnSync").addEventListener("click", function(){ pull(false); });
+document.getElementById("btnCfg").addEventListener("click", function(){
+  var p = document.getElementById("cfgPanel"); p.style.display = p.style.display==="none" ? "block" : "none";
+});
+document.getElementById("cfgSave").addEventListener("click", function(){
+  server.url = document.getElementById("cfgUrl").value.trim().replace(/\/$/,"");
+  server.readAuth = document.getElementById("cfgRead").value;
+  server.writeAuth = document.getElementById("cfgWrite").value;
+  localStorage.setItem(KEY_URL, server.url); localStorage.setItem(KEY_READ, server.readAuth); localStorage.setItem(KEY_WRITE, server.writeAuth);
+  pull(false);
+});
+
+loadConfig(); loadLocal(); render(); pull(true);
+setInterval(function(){ pull(true); }, 120000);
+</script>
+</body>
+</html>
