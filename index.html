@@ -75,11 +75,10 @@
   </header>
 
   <div class="panel" id="cfgPanel" style="display:none">
-    <p style="margin:0 0 10px;font-size:13px;color:#475569">Collez l'adresse de votre serveur de synchronisation, puis les mots de passe du bureau (Cloudflare, Secrets <code>READ_TOKEN</code> et <code>AUTH_TOKEN</code>). Le mot de passe de lecture suffit pour consulter la liste ; celui d'écriture permet de modifier.</p>
+    <p style="margin:0 0 10px;font-size:13px;color:#475569">Un seul mot de passe : entrez celui de <b>lecture</b> pour consulter la liste, ou celui d'<b>écriture</b> (bureau) pour pouvoir la modifier — l'application détecte automatiquement vos droits.</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <input type="url" id="cfgUrl" placeholder="https://trombinoscope.xxx.workers.dev" style="flex:1;min-width:240px" />
-      <input type="text" id="cfgRead" placeholder="Mot de passe de lecture" style="min-width:170px" />
-      <input type="text" id="cfgWrite" placeholder="Mot de passe d'écriture" style="min-width:170px" />
+      <input type="url" id="cfgUrl" placeholder="https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev/" style="flex:1;min-width:240px" />
+      <input type="text" id="cfgAuth" placeholder="Mot de passe" style="min-width:170px" />
       <button class="btn green" id="cfgSave">Connecter</button>
     </div>
   </div>
@@ -119,23 +118,30 @@ var CATEGORIES = ["Cordes","Bois","Cuivres","Percussions","Claviers","Chant","Di
 var CAT_COLORS = { "Cordes":["#f5f3ff","#6d28d9","#ddd6fe"], "Bois":["#d1fae5","#047857","#a7f3d0"], "Cuivres":["#fef3c7","#b45309","#fde68a"], "Percussions":["#ffe4e6","#be123c","#fecdd3"], "Claviers":["#e0f2fe","#0369a1","#bae6fd"], "Chant":["#fce7f3","#a21caf","#f9a8d4"], "Direction":["#0f172a","#ffffff","#334155"], "Autre":["#f1f5f9","#475569","#e2e8f0"] };
 var ALL = "Tous";
 var uid = function(){ return Math.random().toString(36).slice(2,10); };
-var KEY_M = "trombi-web-members", KEY_C = "trombi-web-concerts", KEY_URL = "trombi-server-url", KEY_READ = "trombi-read-auth", KEY_WRITE = "trombi-write-auth";
+var KEY_M = "trombi-web-members", KEY_C = "trombi-web-concerts", KEY_URL = "trombi-server-url", KEY_AUTH = "trombi-auth";
+
+// ═══════════════════════════════════════════════════════════════
+// ⚙️ À MODIFIER UNE SEULE FOIS avant de déposer ce fichier sur GitHub :
+//   - SERVER_URL : l'adresse de votre Cloudflare Worker (URL par défaut,
+//     non sensible, modifiable ensuite dans le menu ⚙️ Synchronisation)
+// Le mot de passe n'est PAS stocké ici (le site est public) :
+// chacun le saisit dans ⚙️, il est mémorisé dans son navigateur.
+// ═══════════════════════════════════════════════════════════════
+var SERVER_URL = "https://trombinoscope.VOTRE-COMPTE.workers.dev";
 var ESC = function(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); };
 
 var state = {
   members: [], concerts: [],
   search: "", nat: ALL, cat: ALL, inst: ALL, concert: null, selectedId: null
 };
-var server = { url: "", readAuth: "", writeAuth: "" };
+var server = { url: "", auth: "" };
 var pushTimer = null;
 
 function loadConfig() {
-  server.url = localStorage.getItem(KEY_URL) || "";
-  server.readAuth = localStorage.getItem(KEY_READ) || "";
-  server.writeAuth = localStorage.getItem(KEY_WRITE) || "";
+  server.url = (SERVER_URL && SERVER_URL.indexOf("VOTRE") < 0 ? SERVER_URL : "") || localStorage.getItem(KEY_URL) || "";
+  server.auth = localStorage.getItem(KEY_AUTH) || "";
   document.getElementById("cfgUrl").value = server.url;
-  document.getElementById("cfgRead").value = server.readAuth;
-  document.getElementById("cfgWrite").value = server.writeAuth;
+  document.getElementById("cfgAuth").value = server.auth;
 }
 function setSync(status, msg) {
   var dot = document.getElementById("syncDot"), txt = document.getElementById("syncText");
@@ -164,24 +170,27 @@ function saveLocal() {
   try { localStorage.setItem(KEY_M, JSON.stringify(state.members)); localStorage.setItem(KEY_C, JSON.stringify(state.concerts)); } catch(e){}
 }
 function push(reason) {
-  if (!server.url) { setSync("", "Hors ligne — configurez ⚙️ pour partager"); return; }
+  if (!server.url) { setSync("", "Hors ligne — site non configuré"); return; }
+  if (!server.auth) { setSync("", "🔒 Entrez le mot de passe (⚙️)"); return; }
   setSync("", "Envoi…");
   fetch(server.url + "/data", {
     method: "PUT",
-    headers: { "Content-Type": "application/json", "X-Auth": server.writeAuth },
+    headers: { "Content-Type": "application/json", "X-Auth": server.auth },
     body: payload()
   }).then(function(r){
     if (r.ok) setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR"));
+    else if (r.status === 401) setSync("ok", "Lecture seule " + new Date().toLocaleTimeString("fr-FR"));
     else { setSync("err", "Erreur serveur (" + r.status + ")"); }
   }).catch(function(){ setSync("err", "Serveur injoignable"); });
 }
 function save(reason) { saveLocal(); clearTimeout(pushTimer); pushTimer = setTimeout(function(){ push(reason); }, 400); }
 function pull(quiet) {
-  if (!server.url) { setSync("", "Hors ligne — configurez ⚙️ pour partager"); return; }
+  if (!server.url) { setSync("", "Hors ligne — site non configuré"); return; }
+  if (!server.auth) { setSync("", "🔒 Entrez le mot de passe (⚙️)"); return; }
   if (!quiet) setSync("", "Chargement…");
   fetch(server.url + "/data", {
     method: "GET",
-    headers: { "X-Auth": server.readAuth }
+    headers: { "X-Auth": server.auth }
   }).then(function(r){
     if (r.status === 401) throw "unauthorized";
     return r.ok ? r.text() : Promise.reject("http "+r.status);
@@ -192,7 +201,7 @@ function pull(quiet) {
     }
     setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR"));
     render();
-  }).catch(function(e){ setSync("err", e === "unauthorized" ? "Mot de passe de lecture incorrect" : "Serveur injoignable"); });
+  }).catch(function(e){ setSync("err", e === "unauthorized" ? "Mot de passe incorrect" : "Serveur injoignable"); });
 }
 function memberById(id) { for (var i=0;i<state.members.length;i++) if (state.members[i].id===id) return state.members[i]; return null; }
 function update(id, patch) { state.members = state.members.map(function(m){ return m.id===id ? Object.assign({}, m, patch) : m; }); save(); render(); }
@@ -381,13 +390,14 @@ document.getElementById("btnCfg").addEventListener("click", function(){
 });
 document.getElementById("cfgSave").addEventListener("click", function(){
   server.url = document.getElementById("cfgUrl").value.trim().replace(/\/$/,"");
-  server.readAuth = document.getElementById("cfgRead").value;
-  server.writeAuth = document.getElementById("cfgWrite").value;
-  localStorage.setItem(KEY_URL, server.url); localStorage.setItem(KEY_READ, server.readAuth); localStorage.setItem(KEY_WRITE, server.writeAuth);
+  server.auth = document.getElementById("cfgAuth").value;
+  localStorage.setItem(KEY_URL, server.url); localStorage.setItem(KEY_AUTH, server.auth);
   pull(false);
 });
 
-loadConfig(); loadLocal(); render(); pull(true);
+loadConfig(); loadLocal(); render();
+if (!server.auth) { document.getElementById("cfgPanel").style.display = "block"; }
+else pull(true);
 setInterval(function(){ pull(true); }, 120000);
 </script>
 </body>
