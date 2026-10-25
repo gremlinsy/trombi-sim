@@ -77,8 +77,8 @@
   <div class="panel" id="cfgPanel" style="display:none">
     <p style="margin:0 0 10px;font-size:13px;color:#475569">Un seul mot de passe : entrez celui de <b>lecture</b> pour consulter la liste, ou celui d'<b>écriture</b> (bureau) pour pouvoir la modifier — l'application détecte automatiquement vos droits.</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <input type="url" id="cfgUrl" placeholder="https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev/" style="flex:1;min-width:240px" />
-      <input type="text" id="cfgAuth" placeholder="Mot de passe" style="min-width:170px" />
+      <input type="url" id="cfgUrl" placeholder="https://trombinoscope.xxx.workers.dev" style="flex:1;min-width:240px" />
+      <input type="password" id="cfgAuth" placeholder="Mot de passe" style="min-width:170px" autocomplete="off" />
       <button class="btn green" id="cfgSave">Connecter</button>
     </div>
   </div>
@@ -392,6 +392,7 @@ document.getElementById("cfgSave").addEventListener("click", function(){
   server.url = document.getElementById("cfgUrl").value.trim().replace(/\/$/,"");
   server.auth = document.getElementById("cfgAuth").value;
   localStorage.setItem(KEY_URL, server.url); localStorage.setItem(KEY_AUTH, server.auth);
+  document.getElementById("cfgPanel").style.display = "none";
   pull(false);
 });
 
