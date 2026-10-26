@@ -74,6 +74,7 @@
       <button class="btn" id="btnSync" title="Recharger la liste commune">🔄 Actualiser</button>
       <button class="btn admin-only" id="btnExportJson" title="Exporter la liste complète (avec photos et identifiants)">⬇️ Export</button>
       <button class="btn admin-only" id="btnImportJson" title="Importer un fichier : met à jour les fiches existantes (même id), crée les nouvelles">⬆️ Import</button>
+      <button class="btn admin-only" id="btnClearAll" title="Effacer tous les membres et concerts de la base commune">🗑️ Tout effacer</button>
       <button class="btn" id="btnCfg" title="Se connecter au trombinoscope commun">🔑 Connexion</button>
       <button class="btn" id="btnCsv">📄 CSV</button>
       <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
@@ -171,8 +172,28 @@ function loadLocal() {
     state.concerts = c ? JSON.parse(c) : [];
   } catch(e) { state.members = demo(); }
 }
+// Lecture tolérante des clés : accepte firstName/firstname/first, lastName/lastname/surname, etc.
+function pick(m, keys) {
+  var lower = {};
+  Object.keys(m).forEach(function(k){ lower[k.toLowerCase()] = m[k]; });
+  for (var i=0;i<keys.length;i++) { var v = lower[keys[i].toLowerCase()]; if (v !== undefined && v !== null && v !== "") return v; }
+  return undefined;
+}
 function normalize(list) {
-  return list.map(function(m){ return { id: m.id||uid(), firstName:m.firstName||"", lastName:m.lastName||"", role:m.role||"Musicien", nationality:m.nationality||"Non renseignée", category:m.category||"Autre", instrument:m.instrument||"", concerts:Array.isArray(m.concerts)?m.concerts:[], photo:m.photo||null, notes:m.notes||"" }; });
+  return list.map(function(m){
+    return {
+      id: m.id || uid(),
+      firstName: pick(m, ["firstName","firstname","first","prénom","prenom"]) || "",
+      lastName: pick(m, ["lastName","lastname","last","surname","nom"]) || "",
+      role: pick(m, ["role","fonction"]) || "Musicien",
+      nationality: pick(m, ["nationality","nationalite","country","pays"]) || "Non renseignée",
+      category: pick(m, ["category","categorie","famille"]) || "Autre",
+      instrument: pick(m, ["instrument"]) || "",
+      concerts: Array.isArray(m.concerts) ? m.concerts : [],
+      photo: m.photo || null,
+      notes: pick(m, ["notes","note","remarques"]) || ""
+    };
+  });
 }
 function demo() {
   return [
@@ -383,10 +404,21 @@ function mergeImport(data) {
   state.members.forEach(function(m){ byId[m.id] = m; });
   var created = 0, updated = 0;
   normalize(incoming).forEach(function(m){
-    if (m.id && byId[m.id]) {
+    var existing = null;
+    if (m.id && byId[m.id]) existing = byId[m.id];
+    else {
+      // sans id : correspondance par prénom + nom (évite les doublons aux imports répétés)
+      var first = (m.firstName||"").toLowerCase(), last = (m.lastName||"").toLowerCase();
+      for (var k in byId) {
+        var c = byId[k];
+        if ((c.firstName||"").toLowerCase()===first && (c.lastName||"").toLowerCase()===last && first+last !== "") { existing = byId[k]; break; }
+      }
+    }
+    if (existing) {
       // ne pas effacer une photo existante si l'import n'en fournit pas
       if (!m.photo) delete m.photo;
-      byId[m.id] = Object.assign({}, byId[m.id], m); updated++;
+      m.id = existing.id;
+      byId[existing.id] = Object.assign({}, existing, m); updated++;
     }
     else { m.id = m.id || uid(); byId[m.id] = m; created++; }
   });
@@ -414,6 +446,14 @@ document.getElementById("jsonFile").addEventListener("change", function(){
     } catch(e){ alert("Fichier illisible."); }
   };
   r.readAsText(f); self.value = "";
+});
+document.getElementById("btnClearAll").addEventListener("click", function(){
+  if (!confirm("Effacer TOUS les membres et concerts de la base commune ?\nCette action sera visible par tous et ne peut pas être annulée.")) return;
+  if (!confirm("Vraiment sûr ? Les photos seront également perdues.\nAstuce : faites un ⬇️ Export de sauvegarde avant d'effacer.")) return;
+  state.members = []; state.concerts = []; state.selectedId = null;
+  state.search = ""; state.nat = ALL; state.cat = ALL; state.inst = ALL; state.concert = null;
+  document.getElementById("search").value = "";
+  save(); render();
 });
 
 document.getElementById("search").addEventListener("input", function(){ state.search=this.value; render(); });
