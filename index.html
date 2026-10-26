@@ -57,6 +57,8 @@
   #syncDot.ok { background:#10b981; } #syncDot.err { background:#ef4444; }
   @media print { .btn, .panel, footer, .chip { display: none !important; } body { background: #fff; padding: 0; } }
   body.readonly #btnAdd, body.readonly #btnNewConcert, body.readonly #addPanel, body.readonly #m-photo-btn, body.readonly #m-photo-del, body.readonly #m-del { display: none !important; }
+  .admin-only { display: none; }
+  body.admin .admin-only { display: inline-block; }
 </style>
 </head>
 <body>
@@ -68,17 +70,20 @@
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       <button class="btn" id="btnSync" title="Recharger la liste commune">🔄 Actualiser</button>
+      <button class="btn admin-only" id="btnExportJson" title="Exporter la liste complète (avec photos et identifiants)">⬇️ Export</button>
+      <button class="btn admin-only" id="btnImportJson" title="Importer un fichier : met à jour les fiches existantes (même id), crée les nouvelles">⬆️ Import</button>
       <button class="btn" id="btnCfg" title="Se connecter au trombinoscope commun">🔑 Connexion</button>
       <button class="btn" id="btnCsv">📄 CSV</button>
       <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
       <button class="btn dark" id="btnAdd">+ Ajouter un membre</button>
+      <input type="file" id="jsonFile" accept=".json,application/json" hidden />
     </div>
   </header>
 
   <div class="panel" id="cfgPanel" style="display:none">
     <p style="margin:0 0 10px;font-size:13px;color:#475569">Entrez le mot de passe fourni par le bureau : selon vos droits, l'application s'ouvre en consultation ou en modification. Il est mémorisé dans ce navigateur.</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <input type="url" id="cfgUrl" placeholder="https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev/" style="flex:1;min-width:240px" />
+      <input type="url" id="cfgUrl" placeholder="https://trombinoscope.xxx.workers.dev" style="flex:1;min-width:240px" />
       <input type="password" id="cfgAuth" placeholder="Mot de passe" style="min-width:170px" autocomplete="off" />
       <button class="btn green" id="cfgSave">Connecter</button>
     </div>
@@ -187,7 +192,7 @@ function push(reason) {
     headers: { "Content-Type": "application/json", "X-Auth": server.auth },
     body: payload()
   }).then(function(r){
-    if (r.ok) { state.canWrite = true; setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR")); }
+    if (r.ok) { state.canWrite = true; setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR")); render(); }
     else if (r.status === 401) { state.canWrite = false; setSync("ok", "Lecture seule " + new Date().toLocaleTimeString("fr-FR")); render(); }
     else { setSync("err", "Erreur serveur (" + r.status + ")"); }
   }).catch(function(){ setSync("err", "Serveur injoignable"); });
@@ -250,6 +255,7 @@ function tag(text, cat) {
 
 function render() {
   document.body.classList.toggle("readonly", state.canWrite === false);
+  document.body.classList.toggle("admin", state.canWrite === true);
   var list = filtered();
   var withPhoto = state.members.filter(function(m){ return m.photo; }).length;
   document.getElementById("stats").textContent = state.members.length+" membres · "+list.length+" affiché"+(list.length>1?"s":"")+" · "+withPhoto+" avec photo";
@@ -358,6 +364,47 @@ function download(name, content, type) {
   setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
 }
 function escCsv(s){ return '"'+String(s).replace(/"/g,'""')+'"'; }
+
+// Import avec fusion par id : met à jour les fiches existantes, crée les nouvelles
+function mergeImport(data) {
+  var incoming = Array.isArray(data) ? data : (data && Array.isArray(data.members) ? data.members : null);
+  if (!incoming) return false;
+  var byId = {};
+  state.members.forEach(function(m){ byId[m.id] = m; });
+  var created = 0, updated = 0;
+  normalize(incoming).forEach(function(m){
+    if (m.id && byId[m.id]) {
+      // ne pas effacer une photo existante si l'import n'en fournit pas
+      if (!m.photo) delete m.photo;
+      byId[m.id] = Object.assign({}, byId[m.id], m); updated++;
+    }
+    else { m.id = m.id || uid(); byId[m.id] = m; created++; }
+  });
+  state.members = Object.keys(byId).map(function(k){ return byId[k]; });
+  if (data && Array.isArray(data.concerts)) state.concerts = data.concerts;
+  return { created: created, updated: updated };
+}
+
+document.getElementById("btnExportJson").addEventListener("click", function(){
+  download("trombinoscope-orchestre.json", JSON.stringify({ members: state.members, concerts: state.concerts }, null, 2), "application/json");
+});
+document.getElementById("btnImportJson").addEventListener("click", function(){ document.getElementById("jsonFile").click(); });
+document.getElementById("jsonFile").addEventListener("change", function(){
+  var f = this.files[0]; if (!f) return;
+  var r = new FileReader();
+  var self = this;
+  r.onload = function(){
+    try {
+      var res = mergeImport(JSON.parse(r.result));
+      if (res) {
+        save();
+        alert("Import réussi : " + res.updated + " fiche(s) mise(s) à jour, " + res.created + " créée(s).");
+        render();
+      } else alert("Fichier invalide : aucun membre trouvé.");
+    } catch(e){ alert("Fichier illisible."); }
+  };
+  r.readAsText(f); self.value = "";
+});
 
 document.getElementById("search").addEventListener("input", function(){ state.search=this.value; render(); });
 document.getElementById("natSel").addEventListener("change", function(){ state.nat=this.value; state.inst=ALL; render(); });
