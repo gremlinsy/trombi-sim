@@ -59,6 +59,8 @@
   body.readonly #btnAdd, body.readonly #btnNewConcert, body.readonly #addPanel, body.readonly #m-photo-btn, body.readonly #m-photo-del, body.readonly #m-del { display: none !important; }
   .admin-only { display: none; }
   body.admin .admin-only { display: inline-block; }
+  .del-concert { display: none; margin-left: 6px; color: #dc2626; font-weight: 700; }
+  body.admin .del-concert { display: inline; }
 </style>
 </head>
 <body>
@@ -102,6 +104,7 @@
       <input type="text" id="f-notes" placeholder="Notes (téléphone, e-mail…)" style="flex:1" />
       <button class="btn green" id="btnSaveNew">Ajouter</button>
     </div>
+    <div id="f-concerts" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px"></div>
   </div>
 
   <div class="panel">
@@ -282,7 +285,7 @@ function render() {
   cq.innerHTML = '<span class="label">Concerts :</span><button class="chip'+(state.concert?"":" on")+'" data-concert="">Tous</button>' +
     concerts.map(function(c){
       var n = state.members.filter(function(m){ return m.concerts.indexOf(c)>=0; }).length;
-      return '<button class="chip'+(state.concert===c?" on green":"")+'" data-concert="'+ESC(c)+'">🎵 '+ESC(c)+' ('+n+')</button>';
+      return '<button class="chip'+(state.concert===c?" on green":"")+'" data-concert="'+ESC(c)+'">🎵 '+ESC(c)+' ('+n+')<span class="del-concert" data-del-concert="'+ESC(c)+'" title="Supprimer ce concert">✕</span></button>';
     }).join("") + '<button class="chip add" id="btnNewConcert">+ Nouveau concert</button>' +
     (state.nat!==ALL||state.cat!==ALL||state.inst!==ALL||state.concert||state.search ? '<button class="chip reset" id="btnReset">✕ Réinitialiser les filtres</button>' : "");
 
@@ -295,6 +298,12 @@ function render() {
       (m.concerts.length?'<div class="concerts-line">🎵 '+ESC(m.concerts.join(", "))+'</div>':'')+
       '</div><input type="file" accept="image/*" hidden data-photo="'+m.id+'" /></div>';
   }).join("") : '<div class="empty" style="grid-column:1/-1">Aucun membre ne correspond à ces critères.</div>';
+
+  // concerts cochables dans le formulaire d'ajout
+  var fc = document.getElementById("f-concerts");
+  fc.innerHTML = concerts.length ? '<span class="label">Concerts :</span>' + concerts.map(function(c){
+    return '<label class="chip" style="cursor:pointer"><input type="checkbox" value="'+ESC(c)+'" style="margin-right:5px" />'+ESC(c)+'</label>';
+  }).join("") : '<span class="label" style="color:#cbd5e1">Aucun concert — créez-en un avec « + Nouveau concert » ci-dessous</span>';
 
   if (state.selectedId) openModal(state.selectedId);
 }
@@ -323,7 +332,8 @@ function openModal(id) {
     '<div class="info">'+infoHtml+'</div></div>'+
     (concerts.length?'<div style="padding:0 18px 12px"><div class="label" style="margin-bottom:6px">Participation aux concerts</div><div class="chips">'+
       concerts.map(function(c){ var on = m.concerts.indexOf(c)>=0;
-        return '<span class="chip" style="cursor:default'+(on?";background:#059669;color:#fff;border-color:#059669":"")+'">'+(on?"✓ ":"")+ESC(c)+'</span>'; }).join("")+'</div></div>':'')+
+        if (ro) return '<span class="chip" style="cursor:default'+(on?";background:#059669;color:#fff;border-color:#059669":"")+'">'+(on?"✓ ":"")+ESC(c)+'</span>';
+        return '<button class="chip'+(on?" on green":"")+'" data-toggle="'+ESC(c)+'">'+(on?"✓ ":"")+ESC(c)+'</button>'; }).join("")+'</div></div>':'')+
     (ro?'':'<div class="foot"><div style="display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn" id="m-photo-btn">📷 '+(m.photo?"Changer la photo":"Ajouter une photo")+'</button>'+
     '<button class="btn" id="m-photo-del">Retirer</button></div>'+
@@ -415,7 +425,20 @@ document.body.addEventListener("click", function(e){
   var catChip = t.closest && t.closest("[data-cat]");
   if (catChip) { state.cat = catChip.getAttribute("data-cat"); render(); return; }
   var concertChip = t.closest && t.closest("[data-concert]");
-  if (concertChip && concertChip.id!=="btnNewConcert") { var v = concertChip.getAttribute("data-concert"); state.concert = v||null; render(); return; }
+  if (concertChip && concertChip.id!=="btnNewConcert") {
+    if (t.classList && t.classList.contains("del-concert")) {
+      var del = t.getAttribute("data-del-concert");
+      var used = state.members.filter(function(m){ return m.concerts.indexOf(del)>=0; }).length;
+      if (confirm("Supprimer le concert « "+del+" » ?"+(used?" Il sera retiré de "+used+" fiche(s).":""))) {
+        state.concerts = state.concerts.filter(function(c){ return c!==del; });
+        state.members.forEach(function(m){ m.concerts = m.concerts.filter(function(c){ return c!==del; }); });
+        if (state.concert === del) state.concert = null;
+        save(); render();
+      }
+      return;
+    }
+    var v = concertChip.getAttribute("data-concert"); state.concert = v||null; render(); return;
+  }
   if (t.id==="btnNewConcert") {
     var name = prompt("Nom du nouveau concert ?");
     if (name && name.trim() && state.concerts.indexOf(name.trim())<0) { state.concerts.push(name.trim()); save(); render(); }
@@ -443,12 +466,14 @@ catSel.innerHTML = CATEGORIES.map(function(c){ return '<option>'+ESC(c)+'</optio
 document.getElementById("btnSaveNew").addEventListener("click", function(){
   var first = document.getElementById("f-first").value.trim(), last = document.getElementById("f-last").value.trim();
   if (!first && !last) return;
+  var concertsSel = [];
+  document.querySelectorAll("#f-concerts input[type=checkbox]:checked").forEach(function(cb){ concertsSel.push(cb.value); });
   state.members.push({ id:uid(), firstName:first, lastName:last,
     role:document.getElementById("f-role").value.trim()||"Musicien",
     nationality:document.getElementById("f-nat").value.trim()||"Non renseignée",
     category:catSel.value||"Autre",
     instrument:document.getElementById("f-inst").value.trim(),
-    concerts:[], photo:null, notes:document.getElementById("f-notes").value });
+    concerts:concertsSel, photo:null, notes:document.getElementById("f-notes").value });
   ["f-first","f-last","f-role","f-nat","f-inst","f-notes"].forEach(function(i){ document.getElementById(i).value=""; });
   save(); render();
 });
