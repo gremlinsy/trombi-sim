@@ -68,7 +68,7 @@
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       <button class="btn" id="btnSync" title="Recharger la liste commune">🔄 Actualiser</button>
-      <button class="btn" id="btnCfg" title="Configurer la synchronisation">⚙️ Synchronisation</button>
+      <button class="btn" id="btnCfg" title="Se connecter au trombinoscope commun">🔑 Connexion</button>
       <button class="btn" id="btnCsv">📄 CSV</button>
       <button class="btn" onclick="window.print()">🖨️ Imprimer</button>
       <button class="btn dark" id="btnAdd">+ Ajouter un membre</button>
@@ -76,7 +76,7 @@
   </header>
 
   <div class="panel" id="cfgPanel" style="display:none">
-    <p style="margin:0 0 10px;font-size:13px;color:#475569">Un seul mot de passe : entrez celui de <b>lecture</b> pour consulter la liste, ou celui d'<b>écriture</b> (bureau) pour pouvoir la modifier — l'application détecte automatiquement vos droits.</p>
+    <p style="margin:0 0 10px;font-size:13px;color:#475569">Entrez le mot de passe fourni par le bureau : selon vos droits, l'application s'ouvre en consultation ou en modification. Il est mémorisé dans ce navigateur.</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       <input type="url" id="cfgUrl" placeholder="https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev/" style="flex:1;min-width:240px" />
       <input type="password" id="cfgAuth" placeholder="Mot de passe" style="min-width:170px" autocomplete="off" />
@@ -104,6 +104,12 @@
       <input type="text" class="search" id="search" placeholder="Rechercher un nom, un rôle, un instrument…" />
       <select id="natSel"></select>
       <select id="instSel"></select>
+      <select id="sortSel" title="Ordre d'affichage">
+        <option value="last">↓ Nom (A-Z)</option>
+        <option value="first">↓ Prénom (A-Z)</option>
+        <option value="country">↓ Pays (A-Z)</option>
+        <option value="inst">↓ Instrument (A-Z)</option>
+      </select>
     </div>
     <div class="chips" id="catChips"></div>
     <div class="chips" id="concertChips"></div>
@@ -133,7 +139,7 @@ var ESC = function(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(
 
 var state = {
   members: [], concerts: [],
-  search: "", nat: ALL, cat: ALL, inst: ALL, concert: null, selectedId: null,
+  search: "", nat: ALL, cat: ALL, inst: ALL, concert: null, selectedId: null, sort: "last",
   canWrite: null // null = inconnu, true = bureau, false = lecture seule
 };
 var server = { url: "", auth: "" };
@@ -173,7 +179,7 @@ function saveLocal() {
 }
 function push(reason) {
   if (!server.url) { setSync("", "Hors ligne — site non configuré"); return; }
-  if (!server.auth) { setSync("", "🔒 Entrez le mot de passe (⚙️)"); return; }
+  if (!server.auth) { setSync("", "🔒 Entrez le mot de passe (🔑 Connexion)"); return; }
   if (state.canWrite === false) { saveLocal(); setSync("ok", "Lecture seule " + new Date().toLocaleTimeString("fr-FR")); return; }
   setSync("", "Envoi…");
   fetch(server.url + "/data", {
@@ -189,7 +195,7 @@ function push(reason) {
 function save(reason) { saveLocal(); clearTimeout(pushTimer); pushTimer = setTimeout(function(){ push(reason); }, 400); }
 function pull(quiet) {
   if (!server.url) { setSync("", "Hors ligne — site non configuré"); return; }
-  if (!server.auth) { setSync("", "🔒 Entrez le mot de passe (⚙️)"); return; }
+  if (!server.auth) { setSync("", "🔒 Entrez le mot de passe (🔑 Connexion)"); return; }
   if (!quiet) setSync("", "Chargement…");
   fetch(server.url + "/data", {
     method: "GET",
@@ -218,6 +224,7 @@ function allConcerts() {
 }
 function filtered() {
   var q = state.search.trim().toLowerCase();
+  var key = state.sort === "first" ? "firstName" : state.sort === "country" ? "nationality" : state.sort === "inst" ? "instrument" : "lastName";
   return state.members.filter(function(m){
     if (state.nat!==ALL && m.nationality!==state.nat) return false;
     if (state.cat!==ALL && m.category!==state.cat) return false;
@@ -225,7 +232,12 @@ function filtered() {
     if (state.concert && m.concerts.indexOf(state.concert)<0) return false;
     if (q && (m.firstName+" "+m.lastName+" "+m.role+" "+m.instrument+" "+m.nationality).toLowerCase().indexOf(q)<0) return false;
     return true;
-  }).sort(function(a,b){ return a.lastName.localeCompare(b.lastName,"fr"); });
+  }).sort(function(a,b){
+    var va = a[key] || "", vb = b[key] || "";
+    var c = va.localeCompare(vb,"fr");
+    if (c !== 0) return c;
+    return (a.lastName + a.firstName).localeCompare(b.lastName + b.firstName, "fr"); // départage
+  });
 }
 function photoHtml(m) {
   if (m.photo) return '<img class="photo" src="'+m.photo+'" alt="'+ESC(m.firstName+" "+m.lastName)+'" />';
@@ -350,6 +362,7 @@ function escCsv(s){ return '"'+String(s).replace(/"/g,'""')+'"'; }
 document.getElementById("search").addEventListener("input", function(){ state.search=this.value; render(); });
 document.getElementById("natSel").addEventListener("change", function(){ state.nat=this.value; state.inst=ALL; render(); });
 document.getElementById("instSel").addEventListener("change", function(){ state.inst=this.value; render(); });
+document.getElementById("sortSel").addEventListener("change", function(){ state.sort=this.value; render(); });
 document.body.addEventListener("click", function(e){
   var t = e.target;
   var catChip = t.closest && t.closest("[data-cat]");
