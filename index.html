@@ -152,7 +152,7 @@ var KEY_M = "trombi-web-members", KEY_C = "trombi-web-concerts", KEY_URL = "trom
 // Le mot de passe n'est PAS stocké ici (le site est public) :
 // chacun le saisit dans ⚙️, il est mémorisé dans son navigateur.
 // ═══════════════════════════════════════════════════════════════
-var SERVER_URL = "https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev/";
+var SERVER_URL = "https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev";
 var ESC = function(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); };
 
 var state = {
@@ -249,12 +249,20 @@ function pull(quiet) {
     }
     setSync("ok", "Synchronisé " + new Date().toLocaleTimeString("fr-FR"));
     render();
+    // Actualisation manuelle : rouvrir la fiche ouverte pour montrer les données à jour
+    // (pas lors des rafraîchissements automatiques, pour ne jamais couper une saisie)
+    if (!quiet && state.selectedId) openModal(state.selectedId);
     // Détection des droits : premier test d'écriture silencieux
     if (state.canWrite === null) setTimeout(function(){ push(); }, 0);
   }).catch(function(e){ setSync("err", e === "unauthorized" ? "Mot de passe incorrect" : "Serveur injoignable"); });
 }
 function memberById(id) { for (var i=0;i<state.members.length;i++) if (state.members[i].id===id) return state.members[i]; return null; }
-function update(id, patch) { state.members = state.members.map(function(m){ return m.id===id ? Object.assign({}, m, patch) : m; }); save(); render(); }
+// Mise à jour sans recréer la fiche ouverte (préserve la saisie au clavier)
+function update(id, patch) {
+  var m = memberById(id);
+  if (m) Object.assign(m, patch);
+  save(); render();
+}
 
 // ── Anniversaires ──
 var MONTHS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
@@ -378,7 +386,8 @@ function render() {
     return '<label class="chip" style="cursor:pointer"><input type="checkbox" value="'+ESC(c)+'" style="margin-right:5px" />'+ESC(c)+'</label>';
   }).join("") : '<span class="label" style="color:#cbd5e1">Aucun concert — créez-en un avec « + Nouveau concert » ci-dessous</span>';
 
-  if (state.selectedId) openModal(state.selectedId);
+  // Ne pas recréer la fiche ouverte ici : cela casserait la saisie en cours.
+  // (les fiches sont rouvertes explicitement là où c'est nécessaire)
   renderBirthdays();
 }
 
