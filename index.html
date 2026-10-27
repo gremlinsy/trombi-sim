@@ -61,6 +61,9 @@
   body.admin .admin-only { display: inline-block; }
   .del-concert { display: none; margin-left: 6px; color: #dc2626; font-weight: 700; }
   body.admin .del-concert { display: inline; }
+  .bday-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 14px; }
+  .bday-date { min-width: 118px; font-weight: 700; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 999px; padding: 2px 10px; font-size: 12px; text-align: center; }
+  .bday-in { margin-left: auto; color: #94a3b8; font-size: 12px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -86,7 +89,7 @@
   <div class="panel" id="cfgPanel" style="display:none">
     <p style="margin:0 0 10px;font-size:13px;color:#475569">Entrez le mot de passe fourni par le bureau : selon vos droits, l'application s'ouvre en consultation ou en modification. Il est mémorisé dans ce navigateur.</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <input type="url" id="cfgUrl" placeholder="https://trombinoscope-sim.yves-pascault-cloudflare.workers.dev/" style="flex:1;min-width:240px" />
+      <input type="url" id="cfgUrl" placeholder="https://trombinoscope.xxx.workers.dev" style="flex:1;min-width:240px" />
       <input type="password" id="cfgAuth" placeholder="Mot de passe" style="min-width:170px" autocomplete="off" />
       <button class="btn green" id="cfgSave">Connecter</button>
     </div>
@@ -98,6 +101,7 @@
       <input type="text" id="f-last" placeholder="Nom" />
       <input type="text" id="f-role" placeholder="Rôle (premier violon, soliste…)" />
       <input type="text" id="f-nat" placeholder="Nationalité (France, Italie…)" />
+      <input type="date" id="f-date" title="Date de naissance" />
       <select id="f-cat"></select>
       <input type="text" id="f-inst" placeholder="Instrument (violon, hautbois…)" />
     </div>
@@ -122,6 +126,11 @@
     </div>
     <div class="chips" id="catChips"></div>
     <div class="chips" id="concertChips"></div>
+  </div>
+
+  <div class="panel" id="bdayPanel" style="display:none">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="label">🎂 Prochains anniversaires</span></div>
+    <div class="bday-list" id="bdayList" style="max-height:200px;overflow:auto"></div>
   </div>
 
   <div class="grid" id="grid"></div>
@@ -187,6 +196,7 @@ function normalize(list) {
       lastName: pick(m, ["lastName","lastname","last","surname","nom"]) || "",
       role: pick(m, ["role","fonction"]) || "Musicien",
       nationality: pick(m, ["nationality","nationalite","country","pays"]) || "Non renseignée",
+      birthdate: pick(m, ["birthdate","birthday","dateNaissance","naissance","date"]) || "",
       category: pick(m, ["category","categorie","famille"]) || "Autre",
       instrument: pick(m, ["instrument"]) || "",
       concerts: Array.isArray(m.concerts) ? m.concerts : [],
@@ -246,6 +256,43 @@ function pull(quiet) {
 function memberById(id) { for (var i=0;i<state.members.length;i++) if (state.members[i].id===id) return state.members[i]; return null; }
 function update(id, patch) { state.members = state.members.map(function(m){ return m.id===id ? Object.assign({}, m, patch) : m; }); save(); render(); }
 
+// ── Anniversaires ──
+var MONTHS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+function fmtDate(d) {
+  if (!d || d.length < 10) return d || "";
+  var p = d.split("-");
+  return p[2] + " " + (MONTHS[parseInt(p[1],10)-1] || p[1]) + " " + p[0];
+}
+function nextBirthdayDays(d) {
+  if (!d || d.length < 10) return null;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var p = d.split("-");
+  var b = new Date(today.getFullYear(), parseInt(p[1],10)-1, parseInt(p[2],10));
+  if (b < today) b = new Date(today.getFullYear()+1, parseInt(p[1],10)-1, parseInt(p[2],10));
+  return Math.round((b - today) / 86400000);
+}
+function ageAtNext(d) {
+  if (!d || d.length < 10) return null;
+  var today = new Date();
+  var p = d.split("-");
+  var b = new Date(today.getFullYear(), parseInt(p[1],10)-1, parseInt(p[2],10));
+  return (b < today ? today.getFullYear()+1 : today.getFullYear()) - parseInt(p[0],10);
+}
+function renderBirthdays() {
+  var withBday = state.members.filter(function(m){ return m.birthdate && m.birthdate.length >= 10; });
+  var panel = document.getElementById("bdayPanel"), list = document.getElementById("bdayList");
+  if (!withBday.length) { panel.style.display = "none"; return; }
+  panel.style.display = "block";
+  withBday.sort(function(a,b){ return nextBirthdayDays(a.birthdate) - nextBirthdayDays(b.birthdate); });
+  list.innerHTML = withBday.map(function(m){
+    var days = nextBirthdayDays(m.birthdate);
+    var when = days === 0 ? "aujourd'hui 🎉" : days === 1 ? "demain" : "dans " + days + " jours";
+    return '<div class="bday-row"><span class="bday-date">'+fmtDate(m.birthdate).split(" ").slice(0,2).join(" ")+'</span>'+
+      '<span style="font-weight:600">'+ESC(m.firstName)+' <span style="text-transform:uppercase">'+ESC(m.lastName)+'</span></span>'+
+      '<span class="bday-in">'+ESC(when)+' · '+ageAtNext(m.birthdate)+' ans</span></div>';
+  }).join("");
+}
+
 function allConcerts() {
   var s = state.concerts.slice();
   state.members.forEach(function(m){ m.concerts.forEach(function(c){ if (s.indexOf(c)<0) s.push(c); }); });
@@ -303,12 +350,17 @@ function render() {
 
   var concerts = allConcerts();
   var cq = document.getElementById("concertChips");
-  cq.innerHTML = '<span class="label">Concerts :</span><button class="chip'+(state.concert?"":" on")+'" data-concert="">Tous</button>' +
-    concerts.map(function(c){
-      var n = state.members.filter(function(m){ return m.concerts.indexOf(c)>=0; }).length;
-      return '<button class="chip'+(state.concert===c?" on green":"")+'" data-concert="'+ESC(c)+'">🎵 '+ESC(c)+' ('+n+')<span class="del-concert" data-del-concert="'+ESC(c)+'" title="Supprimer ce concert">✕</span></button>';
-    }).join("") + '<button class="chip add" id="btnNewConcert">+ Nouveau concert</button>' +
+  cq.innerHTML = '<span class="label">Concerts :</span><select id="concertSel" title="Filtrer par concert"></select>' +
+    '<button class="chip add" id="btnNewConcert" title="Créer un concert">+ Nouveau concert</button>' +
+    '<button class="chip admin-only" id="btnDelConcert" title="Supprimer le concert sélectionné dans la liste">🗑️ Supprimer</button>' +
     (state.nat!==ALL||state.cat!==ALL||state.inst!==ALL||state.concert||state.search ? '<button class="chip reset" id="btnReset">✕ Réinitialiser les filtres</button>' : "");
+  var concertSel = document.getElementById("concertSel");
+  concertSel.innerHTML = '<option value="">Tous ('+state.members.length+')</option>' + concerts.map(function(c){
+    var n = state.members.filter(function(m){ return m.concerts.indexOf(c)>=0; }).length;
+    return '<option value="'+ESC(c)+'">🎵 '+ESC(c)+' ('+n+')</option>';
+  }).join("");
+  concertSel.value = state.concert || "";
+  concertSel.addEventListener("change", function(){ state.concert = this.value || null; render(); });
 
   var g = document.getElementById("grid");
   g.innerHTML = list.length ? list.map(function(m){
@@ -327,6 +379,7 @@ function render() {
   }).join("") : '<span class="label" style="color:#cbd5e1">Aucun concert — créez-en un avec « + Nouveau concert » ci-dessous</span>';
 
   if (state.selectedId) openModal(state.selectedId);
+  renderBirthdays();
 }
 
 function openModal(id) {
@@ -340,12 +393,14 @@ function openModal(id) {
       + '<div style="font-size:19px;font-weight:700">'+ESC(m.firstName)+' <span style="text-transform:uppercase">'+ESC(m.lastName)+'</span></div>'
       + '<div style="color:#475569">'+ESC(m.role)+'</div>'
       + '<div style="color:#64748b">'+ESC(m.nationality)+' · '+ESC(m.category)+(m.instrument?' · '+ESC(m.instrument):'')+'</div>'
+      + (m.birthdate?'<div style="color:#64748b;font-size:13px">🎂 '+ESC(fmtDate(m.birthdate))+'</div>':'')
       + (m.notes?'<div style="color:#94a3b8;font-size:13px;margin-top:4px">'+ESC(m.notes)+'</div>':'')
       + '</div>'
     : '<input type="text" class="name-in" id="m-first" value="'+ESC(m.firstName)+'" placeholder="Prénom" />'
       + '<input type="text" class="name-in" id="m-last" value="'+ESC(m.lastName)+'" placeholder="Nom" style="text-transform:uppercase" />'
       + '<input type="text" id="m-role" value="'+ESC(m.role)+'" placeholder="Rôle" />'
       + '<input type="text" id="m-nat" value="'+ESC(m.nationality)+'" placeholder="Nationalité" />'
+      + '<input type="date" id="m-date" value="'+ESC(m.birthdate||"")+'" title="Date de naissance" style="max-width:170px" />'
       + '<div style="display:flex;gap:6px"><select id="m-cat" style="flex:1">'+CATEGORIES.map(function(c){ return '<option'+(m.category===c?" selected":"")+'>'+ESC(c)+'</option>'; }).join("")+'</select>'
       + '<input type="text" id="m-inst" value="'+ESC(m.instrument)+'" placeholder="Instrument" style="flex:1" /></div>'
       + '<input type="text" id="m-notes" value="'+ESC(m.notes)+'" placeholder="Notes…" />';
@@ -366,6 +421,8 @@ function openModal(id) {
   [["#m-first","firstName"],["#m-last","lastName"],["#m-role","role"],["#m-nat","nationality"],["#m-inst","instrument"],["#m-notes","notes"]].forEach(function(p){
     var el = bg.querySelector(p[0]); el.addEventListener("input", function(){ set(p[1], el.value); });
   });
+  var dateEl = bg.querySelector("#m-date");
+  if (dateEl) dateEl.addEventListener("change", function(){ update(m.id, {birthdate: dateEl.value}); });
   bg.querySelector("#m-cat").addEventListener("change", function(){ update(m.id, {category:this.value}); });
   bg.querySelectorAll("[data-toggle]").forEach(function(b){
     b.addEventListener("click", function(){
@@ -464,20 +521,18 @@ document.body.addEventListener("click", function(e){
   var t = e.target;
   var catChip = t.closest && t.closest("[data-cat]");
   if (catChip) { state.cat = catChip.getAttribute("data-cat"); render(); return; }
-  var concertChip = t.closest && t.closest("[data-concert]");
-  if (concertChip && concertChip.id!=="btnNewConcert") {
-    if (t.classList && t.classList.contains("del-concert")) {
-      var del = t.getAttribute("data-del-concert");
-      var used = state.members.filter(function(m){ return m.concerts.indexOf(del)>=0; }).length;
-      if (confirm("Supprimer le concert « "+del+" » ?"+(used?" Il sera retiré de "+used+" fiche(s).":""))) {
-        state.concerts = state.concerts.filter(function(c){ return c!==del; });
-        state.members.forEach(function(m){ m.concerts = m.concerts.filter(function(c){ return c!==del; }); });
-        if (state.concert === del) state.concert = null;
-        save(); render();
-      }
-      return;
+  if (t.id==="btnDelConcert") {
+    var sel = document.getElementById("concertSel");
+    var del = sel && sel.value;
+    if (!del) { alert("Choisissez d'abord un concert dans la liste."); return; }
+    var used = state.members.filter(function(m){ return m.concerts.indexOf(del)>=0; }).length;
+    if (confirm("Supprimer le concert « "+del+" » ?"+(used?" Il sera retiré de "+used+" fiche(s).":""))) {
+      state.concerts = state.concerts.filter(function(c){ return c!==del; });
+      state.members.forEach(function(m){ m.concerts = m.concerts.filter(function(c){ return c!==del; }); });
+      state.concert = null;
+      save(); render();
     }
-    var v = concertChip.getAttribute("data-concert"); state.concert = v||null; render(); return;
+    return;
   }
   if (t.id==="btnNewConcert") {
     var name = prompt("Nom du nouveau concert ?");
@@ -511,6 +566,7 @@ document.getElementById("btnSaveNew").addEventListener("click", function(){
   state.members.push({ id:uid(), firstName:first, lastName:last,
     role:document.getElementById("f-role").value.trim()||"Musicien",
     nationality:document.getElementById("f-nat").value.trim()||"Non renseignée",
+    birthdate:document.getElementById("f-date").value||"",
     category:catSel.value||"Autre",
     instrument:document.getElementById("f-inst").value.trim(),
     concerts:concertsSel, photo:null, notes:document.getElementById("f-notes").value });
@@ -518,9 +574,9 @@ document.getElementById("btnSaveNew").addEventListener("click", function(){
   save(); render();
 });
 document.getElementById("btnCsv").addEventListener("click", function(){
-  var rows = [["Prénom","Nom","Rôle","Nationalité","Catégorie","Instrument","Concerts","Photo","Notes"].join(";")];
+  var rows = [["Prénom","Nom","Rôle","Nationalité","Date de naissance","Catégorie","Instrument","Concerts","Photo","Notes"].join(";")];
   filtered().forEach(function(m){
-    rows.push([escCsv(m.firstName),escCsv(m.lastName),escCsv(m.role),escCsv(m.nationality),escCsv(m.category),escCsv(m.instrument),escCsv(m.concerts.join(", ")),m.photo?"oui":"non",escCsv(m.notes)].join(";"));
+    rows.push([escCsv(m.firstName),escCsv(m.lastName),escCsv(m.role),escCsv(m.nationality),escCsv(m.birthdate),escCsv(m.category),escCsv(m.instrument),escCsv(m.concerts.join(", ")),m.photo?"oui":"non",escCsv(m.notes)].join(";"));
   });
   download("trombinoscope-orchestre.csv", "\uFEFF"+rows.join("\r\n"), "text/csv");
 });
